@@ -2,10 +2,11 @@ use std::cmp::max;
 use std::thread;
 use std::time::Instant;
 
-mod hankel;
-use hankel::Hankel;
+use primes::{self, Hankel};
 
 use clap::{App, Arg};
+
+use pbr::{MultiBar, Pipe, ProgressBar};
 
 /// Brute force search for Hamiltonian cycles
 ///
@@ -16,29 +17,31 @@ use clap::{App, Arg};
 ///
 /// `divisor` indicates where to start searching in the previous path. If the path is
 /// length `n` then we start a backtracking search from index `n/divisor`. Should not be 0
-fn test_for_cycles(maximum: usize, start: usize, increment: usize, offset: usize, divisor: usize) {
+fn test_for_cycles(
+    maximum: usize,
+    start: usize,
+    increment: usize,
+    offset: usize,
+    divisor: usize,
+    mut pb: ProgressBar<Pipe>,
+) {
     // When we try to create a new cycle
     let decrement = max(6, increment);
     // Generate all the primes we need
-    let primes = hankel::gen_primes_upto_n(2 * maximum - 1);
+    let primes = primes::gen_primes_upto_n(2 * maximum - 1);
     // Create the first Hamiltonian cycle
-    let mat = Hankel::prime_sum_matrix(start + offset, Some(&primes));
+    let mat = primes::Hankel::prime_sum_matrix(start + offset, Some(&primes));
     let mut previous_path = mat
         .is_hamiltonian()
         .expect("No Hamiltonian cycle found for the starting index");
     let mut i = start + offset;
-    let now = Instant::now();
+    let now = Instant::now(); // for calculating total time
     while i <= maximum {
         let mat = Hankel::prime_sum_matrix(i, Some(&primes));
         // We attempt to re-use the previous cycle by only changing the last
         // vertices in the cycle
         if !mat.hamiltonian_cycle(&mut previous_path, i - decrement) {
             // It didn't work -> create a new cycle from scratch
-            println!(
-                "Thread: {} creating cycle of length {} from scratch",
-                offset / 2,
-                i
-            );
             let cycles_start = match divisor {
                 0 => 1,
                 _ => i / divisor,
@@ -48,20 +51,19 @@ fn test_for_cycles(maximum: usize, start: usize, increment: usize, offset: usize
             }
         }
         // Double check if it is actually a valid cycle
-        if mat.valid_cycle(&previous_path) {
-            println!("Thread: {} FOUND A VALID CYCLE OF LENGTH {}", offset / 2, i)
-        } else {
+        if !mat.valid_cycle(&previous_path) {
             break;
         }
         // If the even index has a cycle then we can always remove one vertex
         // to create a valid path of length index - 1. Therefore we only check
         // the even indices.
         i += increment;
+        pb.inc();
         for _ in 0..increment {
             previous_path.push(0);
         }
     }
-    println!("Thread: {} took {:?}", offset / 2, now.elapsed());
+    pb.finish_print(&format!("Thread: {} took {:?}", offset / 2, now.elapsed()));
 }
 fn main() {
     let matches = App::new("Prime sum sequences")
@@ -95,23 +97,23 @@ fn main() {
             Arg::with_name("Stack size")
                 .long("stack")
                 .help("Stack size in bytes")
+                .default_value("1048576") // 1024*1024 = 1 MiB or 1024 KiB
                 .takes_value(true),
         )
         .arg(
             Arg::with_name("Divisor")
-                .long("divisor")
+                .long("div")
                 .short("d")
                 .help("Greedily start at n/divisor if non-zero")
                 .default_value("0")
                 .takes_value(true),
         )
         .get_matches();
-    let stack_size;
-    if let Some(arg) = matches.value_of("Stack size") {
-        stack_size = arg.parse().expect("Expected a number");
-    } else {
-        stack_size = 1024 * 1024;
-    }
+    let stack_size = matches
+        .value_of("Stack size")
+        .unwrap()
+        .parse()
+        .expect("Expected a number");
     let thread_num = matches
         .value_of("Thread num")
         .unwrap()
@@ -135,6 +137,7 @@ fn main() {
     // Previously on fails the backtracking would start from scratch
     // Now we start from i/divisor
     // 2 Seems to give faster result, went from 54s -> 42s
+    // This works badly for small lengths (< 100)
     let divisor = matches
         .value_of("Divisor")
         .unwrap()
@@ -142,17 +145,26 @@ fn main() {
         .expect("Expected a number");
     let increment = 2 * thread_num;
     let mut threads = Vec::with_capacity(thread_num);
+
+    let mb = MultiBar::new();
     // Spawn threads with explicit stack size
     // Needed because of the heavy recursion
     for i in 0..thread_num {
         let builder = thread::Builder::new();
+        let mut pb = mb.create_bar(((maximum - start + i * 2) / increment) as u64);
+        pb.show_time_left = false;
+        pb.show_percent = false;
+        pb.show_tick = true;
+        pb.tick_format("'`-._,_.-´'");
         threads.push(
             builder
                 .stack_size(stack_size)
-                .spawn(move || test_for_cycles(maximum, start, increment, i * 2, divisor))
+                .spawn(move || test_for_cycles(maximum, start, increment, i * 2, divisor, pb))
                 .unwrap(),
         );
     }
+    mb.listen();
+    println!("All threads done");
     // Wait for threads to join
     for thread in threads {
         let _ = thread.join();

@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::io;
 use std::io::Write;
 use std::vec;
-
 #[derive(Debug)]
 /// A Hankel matrix is a matrix such that the entries along
 /// a parallel to the main _anti-diagonal_ are equal. It
@@ -210,4 +209,23 @@ pub fn gen_primes_upto_n(n: usize) -> Vec<usize> {
         primes.push(i);
     }
     primes
+}
+
+#[cfg(test)]
+#[test]
+fn correct_access() {
+    let mat = Hankel::from_sequence(5, &vec![4, 6, 8]);
+    let _ = mat.print();
+    assert_eq!(mat.vertex_degrees(), vec![2, 2, 3, 2, 2]);
+    assert!(!mat.valid_path(&vec![1, 3, 5, 2, 4]));
+    assert_eq!(mat.get_0_based(0, 0), 0);
+    assert_eq!(mat.get_0_based(1, 1), 1);
+    assert_eq!(mat.get_0_based(2, 4), 1);
+}
+
+#[test]
+fn hamilton() {
+    let mat = Hankel::from_sequence(7, &vec![4, 7, 8]);
+    assert!(mat.valid_path(&vec![7, 1, 6, 2, 5, 3, 4]));
+    assert!(!mat.valid_cycle(&vec![7, 1, 6, 2, 5, 3, 4]));
 }

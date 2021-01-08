@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 clap = "2.33.3"
+pbr = "1.0.3"
 
 [profile.release]
 lto = true
