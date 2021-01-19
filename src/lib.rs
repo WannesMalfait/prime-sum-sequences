@@ -39,7 +39,7 @@ impl Hankel {
     ///
     /// `primes` should be generated at least upto 2n + 1, because we need to check if
     /// n + (n - 1) is prime
-    pub fn prime_sum_matrix(n: usize, primes: Option<&Vec<usize>>) -> Self {
+    pub fn prime_sum_matrix(n: usize, primes: Option<&[usize]>) -> Self {
         let mut diagonals = vec![0; 2 * n - 1];
         let mut i = 1; // index 0 is zero
         let p = match primes {
@@ -57,7 +57,7 @@ impl Hankel {
     /// Generate a Hankel matrix of size `n`by `n` from `values`
     /// Note that the rows and colums are 1-indexed, i.e the top
     /// left corner of the matrix is at index (1,1).
-    pub fn from_sequence(n: usize, sequence: &Vec<usize>) -> Self {
+    pub fn from_sequence(n: usize, sequence: &[usize]) -> Self {
         let mut diagonals = vec![0; 2 * n - 1];
         for i in 0..(2 * n - 1) {
             if let Ok(_) = sequence.binary_search(&(i + 2)) {
@@ -80,7 +80,7 @@ impl Hankel {
     }
     /// Checks if `path` is a valid Hamiltonian path in
     /// the current graph.
-    pub fn valid_path(&self, path: &Vec<usize>) -> bool {
+    pub fn valid_path(&self, path: &[usize]) -> bool {
         for i in 0..(path.len() - 1) {
             match self.get(path[i], path[i + 1]) {
                 0 => return false,
@@ -91,7 +91,7 @@ impl Hankel {
     }
     /// Checks if `cycle` is a valid Hamiltonian cycle in
     /// the current graph.
-    pub fn valid_cycle(&self, cycle: &Vec<usize>) -> bool {
+    pub fn valid_cycle(&self, cycle: &[usize]) -> bool {
         for i in 0..(cycle.len() - 1) {
             match self.get(cycle[i], cycle[i + 1]) {
                 0 => return false,
@@ -114,7 +114,7 @@ impl Hankel {
     ///
     /// The values in the path before `pos` are left unchanged.
     /// Returns false if no cycle was constructed.
-    pub fn hamiltonian_cycle(&self, path: &mut Vec<usize>, pos: usize) -> bool {
+    pub fn hamiltonian_cycle(&self, path: &mut [usize], pos: usize) -> bool {
         if pos == self.size {
             // println!("cur length {}", cur_length);
             return self.get(path[0], path[pos - 1]) != 0;

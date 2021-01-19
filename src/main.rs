@@ -16,7 +16,8 @@ use pbr::{MultiBar, Pipe, ProgressBar};
 /// even. If run with `m` threads, use `increment = 2 * m`.
 ///
 /// `divisor` indicates where to start searching in the previous path. If the path is
-/// length `n` then we start a backtracking search from index `n/divisor`. Should not be 0
+/// length `n` then we start a backtracking search from index `n/divisor`. If `divisor`
+/// is 0, then we start searching from index 1.
 fn test_for_cycles(
     maximum: usize,
     start: usize,
@@ -25,6 +26,8 @@ fn test_for_cycles(
     divisor: usize,
     mut pb: ProgressBar<Pipe>,
 ) {
+    // for calculating total time
+    let now = Instant::now();
     // When we try to create a new cycle
     let decrement = max(6, increment);
     // Generate all the primes we need
@@ -35,7 +38,6 @@ fn test_for_cycles(
         .is_hamiltonian()
         .expect("No Hamiltonian cycle found for the starting index");
     let mut i = start + offset;
-    let now = Instant::now(); // for calculating total time
     while i <= maximum {
         let mat = Hankel::prime_sum_matrix(i, Some(&primes));
         // We attempt to re-use the previous cycle by only changing the last
@@ -69,7 +71,7 @@ fn main() {
     let matches = App::new("Prime sum sequences")
         .version("1.0")
         .author("Wannes M. <wannes.malfait@gmail.com>")
-        .about("Bruteforce search for prime sum sequences")
+        .about("Bruteforce search for prime sum sequences using backtracking.")
         .arg(
             Arg::with_name("Start")
                 .short("s")
@@ -146,6 +148,8 @@ fn main() {
     let increment = 2 * thread_num;
     let mut threads = Vec::with_capacity(thread_num);
 
+    let now = Instant::now();
+
     let mb = MultiBar::new();
     // Spawn threads with explicit stack size
     // Needed because of the heavy recursion
@@ -164,7 +168,7 @@ fn main() {
         );
     }
     mb.listen();
-    println!("All threads done");
+    println!("All threads done, total time: {:?}", now.elapsed());
     // Wait for threads to join
     for thread in threads {
         let _ = thread.join();
