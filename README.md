@@ -1,7 +1,7 @@
 # About the repo
 This only tests for Hamiltonicity and doesn't generate all sequences. The search is done through backtracking. I have run the code to test for sequences till 10000.
 I have not yet been able to prove mathematically that there is a sequence of length n, for every n. However the brute force calculations suggest strongly that this is
-the case. I'm stil a beginner in rust, so the code might not be optimal.
+the case. I'm still a beginner in rust, so the code might not be optimal.
 
 ## Prime sum sequence
 A prime sum sequence of length n is a permutation of the numbers one to n such that the sum of two consecutive numbers is prime. The idea comes from 
@@ -20,7 +20,7 @@ Clone the repository. The code is written in rust, you can build the binary usin
 cargo run --release -- -h
 ```
 ### Examples
-To try to find if there are sequences of length 100 upto 1000, run:
+To try to find if there are sequences of length 100 up to 1000, run:
 ```
 cargo run --release -- --max 1000 --start 100
 ```
