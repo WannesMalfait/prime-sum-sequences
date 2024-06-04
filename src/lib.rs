@@ -48,7 +48,7 @@ impl Hankel {
             None => Cow::Owned(gen_primes_upto_n(2 * n - 1)),
         };
         while i < 2 * n - 1 {
-            if let Ok(_) = p.binary_search(&(i + 2)) {
+            if p.binary_search(&(i + 2)).is_ok() {
                 diagonals[i] = 1;
             }
             i += 2; // skip over the even numbers.
@@ -60,9 +60,9 @@ impl Hankel {
     /// left corner of the matrix is at index (1,1).
     pub fn from_sequence(n: usize, sequence: &[usize]) -> Self {
         let mut diagonals = vec![0; 2 * n - 1];
-        for i in 0..(2 * n - 1) {
-            if let Ok(_) = sequence.binary_search(&(i + 2)) {
-                diagonals[i] = 1;
+        for (i, d) in diagonals.iter_mut().enumerate() {
+            if sequence.binary_search(&(i + 2)).is_ok() {
+                *d = 1;
             }
         }
         Self { diagonals, size: n }
@@ -170,7 +170,7 @@ impl Hankel {
             return degrees;
         }
         let mut first = self.diagonals[0] as usize;
-        let mut sum = first as usize;
+        let mut sum = first;
         // Calculate the degree of the first vertex
         for i in 1..self.size {
             sum += self.diagonals[i] as usize;

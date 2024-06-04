@@ -61,9 +61,7 @@ fn test_for_cycles(
         // the even indices.
         i += increment;
         pb.inc();
-        for _ in 0..increment {
-            previous_path.push(0);
-        }
+        previous_path.resize(previous_path.len() + increment, 0);
     }
     pb.finish_print(&format!("Thread: {} took {:?}", offset / 2, now.elapsed()));
 }
