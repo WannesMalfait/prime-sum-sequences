@@ -2,7 +2,7 @@ use std::cmp::max;
 use std::thread;
 use std::time::Instant;
 
-use primes::{self, Hankel};
+use primes::{self, find_prime_quadruplet, Hankel};
 
 use clap::{App, Arg};
 
@@ -65,6 +65,34 @@ fn test_for_cycles(
     }
     pb.finish_print(&format!("Thread: {} took {:?}", offset / 2, now.elapsed()));
 }
+
+fn test_for_cycles_naive(
+    maximum: usize,
+    start: usize,
+    increment: usize,
+    offset: usize,
+    mut pb: ProgressBar<Pipe>,
+) {
+    // for calculating total time
+    let now = Instant::now();
+
+    // Generate all the primes we need
+    let primes = primes::gen_primes_upto_n(2 * maximum - 1);
+
+    let mut i = start + offset;
+    while i <= maximum {
+        if find_prime_quadruplet(i / 2, Some(&primes)).is_none() {
+            panic!("Did not find Hamiltonian cycle for size {}.", i);
+        };
+        // If the even index has a cycle then we can always remove one vertex
+        // to create a valid path of length index - 1. Therefore we only check
+        // the even indices.
+        i += increment;
+        pb.inc();
+    }
+    pb.finish_print(&format!("Thread: {} took {:?}", offset / 2, now.elapsed()));
+}
+
 fn main() {
     let matches = App::new("Prime sum sequences")
         .version("1.0")
@@ -108,6 +136,13 @@ fn main() {
                 .default_value("0")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("Fast")
+            .long("fast")
+        .short("f")
+    .help("Use greedy fast search")
+    .long_help("This can find a hamiltonian path much quicker, but might fail to find one, even if there is one.")
+        )
         .get_matches();
     let stack_size = matches
         .value_of("Stack size")
@@ -146,6 +181,8 @@ fn main() {
     let increment = 2 * thread_num;
     let mut threads = Vec::with_capacity(thread_num);
 
+    let fast = matches.is_present("Fast");
+
     let now = Instant::now();
 
     let mb = MultiBar::new();
@@ -158,12 +195,21 @@ fn main() {
         pb.show_percent = false;
         pb.show_tick = true;
         pb.tick_format("'`-._,_.-´'");
-        threads.push(
-            builder
-                .stack_size(stack_size)
-                .spawn(move || test_for_cycles(maximum, start, increment, i * 2, divisor, pb))
-                .unwrap(),
-        );
+        if fast {
+            threads.push(
+                builder
+                    .stack_size(stack_size)
+                    .spawn(move || test_for_cycles_naive(maximum, start, increment, i * 2, pb))
+                    .unwrap(),
+            );
+        } else {
+            threads.push(
+                builder
+                    .stack_size(stack_size)
+                    .spawn(move || test_for_cycles(maximum, start, increment, i * 2, divisor, pb))
+                    .unwrap(),
+            );
+        }
     }
     mb.listen();
     println!("All threads done, total time: {:?}", now.elapsed());

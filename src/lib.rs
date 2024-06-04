@@ -197,18 +197,18 @@ impl Hankel {
     }
 }
 
-/// An iterator over a Hamiltonian path in the prime sum
+/// An iterator over a Hamiltonian cycle in the prime sum
 /// graph of the given order.
-pub struct HamiltonianPath {
+pub struct HamiltonianCycle {
     difference1: usize,
     difference2: usize,
     /// Half the size of the graph.
     half_size: usize,
-    /// The current vertex in the path.
+    /// The current vertex in the cycle.
     current: usize,
 }
 
-impl HamiltonianPath {
+impl HamiltonianCycle {
     /// The number of vertices in the graph is: 2n = 2 * half_size.
     /// The two primes should be such that p1 + 2n and p2 + 2n
     /// are both prime, and such that gcd((p2-p1)/2, n) = 1.
@@ -239,7 +239,7 @@ impl HamiltonianPath {
     }
 }
 
-impl Iterator for HamiltonianPath {
+impl Iterator for HamiltonianCycle {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -379,7 +379,7 @@ fn hamilton() {
 
 #[test]
 fn indexing_correct() {
-    let test = HamiltonianPath::new(3, 17, 10);
+    let test = HamiltonianCycle::new(3, 17, 10);
     for i in 1..=10 {
         assert_eq!(i, test.j_from_x_j(test.x_j(i)));
         assert_eq!(i, test.k_from_y_k(test.y_k(i)));
@@ -387,8 +387,8 @@ fn indexing_correct() {
 }
 
 #[test]
-fn path_length() {
-    let test = HamiltonianPath::new(3, 17, 10);
+fn cycle_length() {
+    let test = HamiltonianCycle::new(3, 17, 10);
     assert_eq!(test.count(), 20);
 }
 
@@ -405,7 +405,7 @@ fn first_100() {
             Some(t) => t,
             None => panic!(),
         };
-        let path = HamiltonianPath::new(p1, p2, half_size);
-        assert_eq!(path.count(), half_size * 2);
+        let cycle = HamiltonianCycle::new(p1, p2, half_size);
+        assert_eq!(cycle.count(), half_size * 2);
     }
 }

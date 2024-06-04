@@ -30,5 +30,15 @@ You can also run the search on multiple threads:
 cargo run --release -- --max 2000 --start 100 --threads 4
 ```
 
+## Faster approach
+
+In the paper "[Hamiltonicity in Prime Sum Graphs](https://doi.org/10.1007/s00373-020-02241-1)" by Chen, HB., Fu, HL. and Guo, JY, it is shown that there are infinitely many sizes, for which there is a Hamiltonian cycle. As part of this result they proved the following criterium:
+
+If $p_1 < p_2 <= 2n$ are primes (allowing $p_1 = 1$) such that $p_1 + 2n$ and $p + 2n$ are prime, and $gcd((p_2 - p_1)/2, n) = 1$, then there is a prime sum cycle of length $2n$.
+
+The `--fast` approach checks for this criterium, instead of trying to brute-force a solution.
+
+From the proof, a construction can be deduced which produces such a cycle. This is implemented in the `HamiltonianCycle` iterator.
+
 ## Feedback
 Feel free to make pull requests or file issues.
