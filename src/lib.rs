@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::io;
 use std::io::Write;
 use std::vec;
+
 #[derive(Debug)]
 /// A Hankel matrix is a matrix such that the entries along
 /// a parallel to the main _anti-diagonal_ are equal. It
@@ -12,7 +13,7 @@ use std::vec;
 ///
 /// # Example:
 ///
-/// ```
+/// ```text
 /// 0 1 0 1 0 1
 /// 1 0 1 0 1 0
 /// 0 1 0 1 0 0
@@ -26,7 +27,7 @@ use std::vec;
 /// ```
 /// // The primes upto 2*6 - 1 = 11
 /// let primes = vec![2,3,5,7,11];
-/// let mat = Hankel::prime_sum_matrix(6, primes);
+/// let mat = primes::Hankel::prime_sum_matrix(6, Some(&primes));
 /// ```
 pub struct Hankel {
     /// `diagonals` contains 2n-1 entries for an n by n matrix.
@@ -196,6 +197,152 @@ impl Hankel {
     }
 }
 
+/// An iterator over a Hamiltonian path in the prime sum
+/// graph of the given order.
+pub struct HamiltonianPath {
+    difference1: usize,
+    difference2: usize,
+    /// Half the size of the graph.
+    half_size: usize,
+    /// The current vertex in the path.
+    current: usize,
+}
+
+impl HamiltonianPath {
+    /// The number of vertices in the graph is: 2n = 2 * half_size.
+    /// The two primes should be such that p1 + 2n and p2 + 2n
+    /// are both prime, and such that gcd((p2-p1)/2, n) = 1.
+    pub fn new(prime1: usize, prime2: usize, half_size: usize) -> Self {
+        Self {
+            difference1: (prime1 - 1) / 2,
+            difference2: (prime2 - 1) / 2,
+            half_size,
+            current: 0,
+        }
+    }
+
+    fn x_j(&self, j: usize) -> usize {
+        2 * j - 1
+    }
+
+    fn y_k(&self, k: usize) -> usize {
+        2 * self.half_size - 2 * (k - 1)
+    }
+
+    // x_j = 2 j - 1, so j = (x_j + 1) / 2;
+    fn j_from_x_j(&self, x_j: usize) -> usize {
+        (x_j + 1) / 2
+    }
+
+    fn k_from_y_k(&self, y_k: usize) -> usize {
+        self.half_size - y_k / 2 + 1
+    }
+}
+
+impl Iterator for HamiltonianPath {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current == 0 {
+            // We always start with 1.
+            self.current = 1;
+            return Some(1);
+        }
+        let is_odd = self.current % 2 == 1;
+        if is_odd {
+            let j = self.j_from_x_j(self.current);
+            // Add self.half_size to prevent subtraction overflow.
+            let mut k = (j + self.half_size - self.difference1) % self.half_size;
+            if k == 0 {
+                k = self.half_size;
+            }
+            let y_k = self.y_k(k);
+            if y_k == 1 {
+                // Back to the first vertex.
+                return None;
+            }
+            self.current = y_k;
+            Some(y_k)
+        } else {
+            let k = self.k_from_y_k(self.current);
+            let mut j = (k + self.difference2) % self.half_size;
+            if j == 0 {
+                j = self.half_size;
+            }
+            let x_j = self.x_j(j);
+            if x_j == 1 {
+                // Back to the first vertex.
+                return None;
+            }
+            self.current = x_j;
+            Some(x_j)
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, Some(self.half_size * 2))
+    }
+}
+
+/// Finds primes p1 < p2 <= 2 * n (with n == half_size) such that:
+/// - p1 + 2 * n is prime
+/// - p2 + 2 * n is prime
+/// - gcd((p1 + p2)/2, n)  = 1
+/// If no such primes exist, `None` is returned.
+///
+/// `primes` should contain all the primes from 2 up to 4 * n.
+/// `half_size` should be at least 2.
+///
+/// NOTE: we allow p1 to be equal to 1.
+pub fn find_prime_quadruplet(half_size: usize, primes: Option<&[usize]>) -> Option<(usize, usize)> {
+    assert!(half_size >= 2);
+    let all_primes = match primes {
+        Some(p) => Cow::Borrowed(p),
+        None => Cow::Owned(gen_primes_upto_n(4 * half_size)),
+    };
+    let half_index = match all_primes.binary_search(&(half_size * 2)) {
+        Ok(n) => n,
+        Err(n) => n,
+    };
+
+    let (iter_primes, bigger_primes) = all_primes.split_at(half_index);
+    let mut first_prime_index = 0;
+    for &p1 in std::iter::once(&1).chain(iter_primes.iter()) {
+        // Check if p1 + 2 * n is prime.
+        if bigger_primes.binary_search(&(p1 + 2 * half_size)).is_err() {
+            first_prime_index += 1;
+            continue;
+        }
+        for &p2 in iter_primes.iter().skip(first_prime_index) {
+            if gcd((p2 - p1) / 2, half_size) != 1 {
+                continue;
+            }
+            if bigger_primes.binary_search(&(p2 + half_size * 2)).is_err() {
+                continue;
+            }
+            return Some((p1, p2));
+        }
+        first_prime_index += 1;
+    }
+    None
+}
+
+/// Compute the greatest common divisor of `a` and `b`.
+fn gcd(mut a: usize, mut b: usize) -> usize {
+    if a == b {
+        return a;
+    }
+    if b > a {
+        std::mem::swap(&mut a, &mut b);
+    }
+    while b > 0 {
+        let temp = a;
+        a = b;
+        b = temp % b;
+    }
+    a
+}
+
 /// Generates the primes upto and including `n`. Doesn't
 /// check for overflow on `n`
 pub fn gen_primes_upto_n(n: usize) -> Vec<usize> {
@@ -214,10 +361,10 @@ pub fn gen_primes_upto_n(n: usize) -> Vec<usize> {
 #[cfg(test)]
 #[test]
 fn correct_access() {
-    let mat = Hankel::from_sequence(5, &vec![4, 6, 8]);
+    let mat = Hankel::from_sequence(5, &[4, 6, 8]);
     let _ = mat.print();
     assert_eq!(mat.vertex_degrees(), vec![2, 2, 3, 2, 2]);
-    assert!(!mat.valid_path(&vec![1, 3, 5, 2, 4]));
+    assert!(!mat.valid_path(&[1, 3, 5, 2, 4]));
     assert_eq!(mat.get_0_based(0, 0), 0);
     assert_eq!(mat.get_0_based(1, 1), 1);
     assert_eq!(mat.get_0_based(2, 4), 1);
@@ -225,7 +372,40 @@ fn correct_access() {
 
 #[test]
 fn hamilton() {
-    let mat = Hankel::from_sequence(7, &vec![4, 7, 8]);
-    assert!(mat.valid_path(&vec![7, 1, 6, 2, 5, 3, 4]));
-    assert!(!mat.valid_cycle(&vec![7, 1, 6, 2, 5, 3, 4]));
+    let mat = Hankel::from_sequence(7, &[4, 7, 8]);
+    assert!(mat.valid_path(&[7, 1, 6, 2, 5, 3, 4]));
+    assert!(!mat.valid_cycle(&[7, 1, 6, 2, 5, 3, 4]));
+}
+
+#[test]
+fn indexing_correct() {
+    let test = HamiltonianPath::new(3, 17, 10);
+    for i in 1..=10 {
+        assert_eq!(i, test.j_from_x_j(test.x_j(i)));
+        assert_eq!(i, test.k_from_y_k(test.y_k(i)));
+    }
+}
+
+#[test]
+fn path_length() {
+    let test = HamiltonianPath::new(3, 17, 10);
+    assert_eq!(test.count(), 20);
+}
+
+#[test]
+fn prime_quadruplet() {
+    assert_eq!(find_prime_quadruplet(10, None), Some((3, 17)));
+}
+
+#[test]
+fn first_100() {
+    let primes = gen_primes_upto_n(200);
+    for half_size in 2..50 {
+        let (p1, p2) = match find_prime_quadruplet(half_size, Some(&primes)) {
+            Some(t) => t,
+            None => panic!(),
+        };
+        let path = HamiltonianPath::new(p1, p2, half_size);
+        assert_eq!(path.count(), half_size * 2);
+    }
 }
