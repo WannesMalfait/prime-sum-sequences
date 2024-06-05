@@ -2,11 +2,9 @@ use std::cmp::max;
 use std::thread;
 use std::time::Instant;
 
-use primes::{self, find_prime_quadruplet, Hankel};
+use primes::{self, find_prime_quadruplet, gen_primes_upto_n, Hankel};
 
 use clap::{App, Arg};
-
-use pbr::{MultiBar, Pipe, ProgressBar};
 
 /// Brute force search for Hamiltonian cycles
 ///
@@ -24,22 +22,20 @@ fn test_for_cycles(
     increment: usize,
     offset: usize,
     divisor: usize,
-    mut pb: ProgressBar<Pipe>,
+    primes: &[usize],
 ) {
     // for calculating total time
-    let now = Instant::now();
+    // let now = Instant::now();
     // When we try to create a new cycle
     let decrement = max(6, increment);
-    // Generate all the primes we need
-    let primes = primes::gen_primes_upto_n(2 * maximum - 1);
     // Create the first Hamiltonian cycle
-    let mat = primes::Hankel::prime_sum_matrix(start + offset, Some(&primes));
+    let mat = primes::Hankel::prime_sum_matrix(start + offset, Some(primes));
     let mut previous_path = mat
         .is_hamiltonian()
         .expect("No Hamiltonian cycle found for the starting index");
     let mut i = start + offset;
     while i <= maximum {
-        let mat = Hankel::prime_sum_matrix(i, Some(&primes));
+        let mat = Hankel::prime_sum_matrix(i, Some(primes));
         // We attempt to re-use the previous cycle by only changing the last
         // vertices in the cycle
         if !mat.hamiltonian_cycle(&mut previous_path, i - decrement) {
@@ -60,10 +56,8 @@ fn test_for_cycles(
         // to create a valid path of length index - 1. Therefore we only check
         // the even indices.
         i += increment;
-        pb.inc();
         previous_path.resize(previous_path.len() + increment, 0);
     }
-    pb.finish_print(&format!("Thread: {} took {:?}", offset / 2, now.elapsed()));
 }
 
 fn test_for_cycles_naive(
@@ -71,26 +65,21 @@ fn test_for_cycles_naive(
     start: usize,
     increment: usize,
     offset: usize,
-    mut pb: ProgressBar<Pipe>,
+    primes: &[usize],
 ) {
     // for calculating total time
-    let now = Instant::now();
-
-    // Generate all the primes we need
-    let primes = primes::gen_primes_upto_n(2 * maximum - 1);
+    // let now = Instant::now();
 
     let mut i = start + offset;
     while i <= maximum {
-        if find_prime_quadruplet(i / 2, Some(&primes)).is_none() {
+        if find_prime_quadruplet(i / 2, Some(primes)).is_none() {
             panic!("Did not find Hamiltonian cycle for size {}.", i);
         };
         // If the even index has a cycle then we can always remove one vertex
         // to create a valid path of length index - 1. Therefore we only check
         // the even indices.
         i += increment;
-        pb.inc();
     }
-    pb.finish_print(&format!("Thread: {} took {:?}", offset / 2, now.elapsed()));
 }
 
 fn main() {
@@ -144,12 +133,12 @@ fn main() {
     .long_help("This can find a hamiltonian path much quicker, but might fail to find one, even if there is one.")
         )
         .get_matches();
-    let stack_size = matches
+    let stack_size: usize = matches
         .value_of("Stack size")
         .unwrap()
         .parse()
         .expect("Expected a number");
-    let thread_num = matches
+    let thread_num: usize = matches
         .value_of("Thread num")
         .unwrap()
         .parse()
@@ -173,48 +162,43 @@ fn main() {
     // Now we start from i/divisor
     // 2 Seems to give faster result, went from 54s -> 42s
     // This works badly for small lengths (< 100)
-    let divisor = matches
+    let divisor: usize = matches
         .value_of("Divisor")
         .unwrap()
         .parse()
         .expect("Expected a number");
     let increment = 2 * thread_num;
-    let mut threads = Vec::with_capacity(thread_num);
 
     let fast = matches.is_present("Fast");
 
     let now = Instant::now();
 
-    let mb = MultiBar::new();
+    // Calculate primes ahead of time.
+    println!("Calculating primes");
+    let primes = gen_primes_upto_n(2 * maximum - 1);
+    let primes = std::sync::Arc::new(primes);
+    println!("Finished calculating primes in {:?}", now.elapsed());
+
     // Spawn threads with explicit stack size
     // Needed because of the heavy recursion
-    for i in 0..thread_num {
-        let builder = thread::Builder::new();
-        let mut pb = mb.create_bar(((maximum - start + i * 2) / increment) as u64);
-        pb.show_time_left = false;
-        pb.show_percent = false;
-        pb.show_tick = true;
-        pb.tick_format("'`-._,_.-´'");
-        if fast {
-            threads.push(
-                builder
-                    .stack_size(stack_size)
-                    .spawn(move || test_for_cycles_naive(maximum, start, increment, i * 2, pb))
-                    .unwrap(),
-            );
-        } else {
-            threads.push(
-                builder
-                    .stack_size(stack_size)
-                    .spawn(move || test_for_cycles(maximum, start, increment, i * 2, divisor, pb))
-                    .unwrap(),
-            );
+    std::thread::scope(|s| {
+        for i in 0..thread_num {
+            let builder = thread::Builder::new();
+            builder
+                .stack_size(stack_size)
+                .spawn_scoped(s, {
+                    let primes = primes.clone();
+                    move || {
+                        if fast {
+                            test_for_cycles_naive(maximum, start, increment, i * 2, &primes);
+                        } else {
+                            test_for_cycles(maximum, start, increment, i * 2, divisor, &primes);
+                        }
+                    }
+                })
+                .unwrap();
         }
-    }
-    mb.listen();
-    println!("All threads done, total time: {:?}", now.elapsed());
+    });
     // Wait for threads to join
-    for thread in threads {
-        let _ = thread.join();
-    }
+    println!("All threads done, total time: {:?}", now.elapsed());
 }

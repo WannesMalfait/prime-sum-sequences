@@ -346,10 +346,17 @@ fn gcd(mut a: usize, mut b: usize) -> usize {
 /// Generates the primes upto and including `n`. Doesn't
 /// check for overflow on `n`
 pub fn gen_primes_upto_n(n: usize) -> Vec<usize> {
-    let mut primes = Vec::new();
-    'outer: for i in 2..(n + 1) {
-        for &prime in &primes {
+    let mut primes = vec![2];
+    primes.reserve((n as f64 / (n as f64).log(std::f64::consts::E)).floor() as usize);
+    'outer: for i in (3..(n + 1)).step_by(2) {
+        // Skip checking for even numbers.
+        for &prime in primes.iter().skip(1) {
+            if prime > i / prime {
+                // In this case prime > sqrt(i), so it can not be a factor.
+                break;
+            }
             if i % prime == 0 {
+                // Divisible, so not a prime.
                 continue 'outer;
             }
         }
@@ -408,4 +415,12 @@ fn first_100() {
         let cycle = HamiltonianCycle::new(p1, p2, half_size);
         assert_eq!(cycle.count(), half_size * 2);
     }
+}
+
+#[test]
+fn primes() {
+    assert_eq!(
+        gen_primes_upto_n(30),
+        vec![2, 3, 5, 7, 11, 13, 17, 19, 23, 29]
+    );
 }
