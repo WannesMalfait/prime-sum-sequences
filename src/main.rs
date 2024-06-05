@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use primes::{self, find_prime_quadruplet, gen_primes_upto_n, Hankel};
 
-use clap::{App, Arg};
+use clap::Parser;
 
 /// Brute force search for Hamiltonian cycles
 ///
@@ -24,8 +24,6 @@ fn test_for_cycles(
     divisor: usize,
     primes: &[usize],
 ) {
-    // for calculating total time
-    // let now = Instant::now();
     // When we try to create a new cycle
     let decrement = max(6, increment);
     // Create the first Hamiltonian cycle
@@ -45,12 +43,13 @@ fn test_for_cycles(
                 _ => i / divisor,
             };
             if !mat.hamiltonian_cycle(&mut previous_path, cycles_start) {
-                break; // Didn't find a cycle
+                // Didn't find a cycle
+                panic!("Did not find Hamiltonian cycle for size {}.", i);
             }
         }
         // Double check if it is actually a valid cycle
         if !mat.valid_cycle(&previous_path) {
-            break;
+            panic!("Generated invalid path");
         }
         // If the even index has a cycle then we can always remove one vertex
         // to create a valid path of length index - 1. Therefore we only check
@@ -67,9 +66,6 @@ fn test_for_cycles_naive(
     offset: usize,
     primes: &[usize],
 ) {
-    // for calculating total time
-    // let now = Instant::now();
-
     let mut i = start + offset;
     while i <= maximum {
         if find_prime_quadruplet(i / 2, Some(primes)).is_none() {
@@ -82,123 +78,75 @@ fn test_for_cycles_naive(
     }
 }
 
-fn main() {
-    let matches = App::new("Prime sum sequences")
-        .version("1.0")
-        .author("Wannes M. <wannes.malfait@gmail.com>")
-        .about("Bruteforce search for prime sum sequences using backtracking.")
-        .arg(
-            Arg::with_name("Start")
-                .short("s")
-                .long("start")
-                .help("Start searching from this length")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("Maximum")
-                .short("m")
-                .long("max")
-                .help("Search upto and including Maximum")
-                .required(true)
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("Thread num")
-                .short("t")
-                .long("threads")
-                .help("Number of threads")
-                .default_value("1")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("Stack size")
-                .long("stack")
-                .help("Stack size in bytes")
-                .default_value("1048576") // 1024*1024 = 1 MiB or 1024 KiB
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("Divisor")
-                .long("div")
-                .short("d")
-                .help("Greedily start at n/divisor if non-zero")
-                .default_value("0")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("Fast")
-            .long("fast")
-        .short("f")
-    .help("Use greedy fast search")
-    .long_help("This can find a hamiltonian path much quicker, but might fail to find one, even if there is one.")
-        )
-        .get_matches();
-    let stack_size: usize = matches
-        .value_of("Stack size")
-        .unwrap()
-        .parse()
-        .expect("Expected a number");
-    let thread_num: usize = matches
-        .value_of("Thread num")
-        .unwrap()
-        .parse()
-        .expect("Expected a number");
-    let maximum = matches
-        .value_of("Maximum")
-        .unwrap()
-        .parse()
-        .expect("Expected a number");
-    let start;
-    if let Some(arg) = matches.value_of("Start") {
-        start = arg.parse().expect("Expected a number");
-        if start < thread_num * 2 {
-            eprintln!("The number of threads must be less than the start/2");
-            return;
-        }
-    } else {
-        start = max(thread_num * 2, 12);
-    }
-    // Previously on fails the backtracking would start from scratch
-    // Now we start from i/divisor
-    // 2 Seems to give faster result, went from 54s -> 42s
-    // This works badly for small lengths (< 100)
-    let divisor: usize = matches
-        .value_of("Divisor")
-        .unwrap()
-        .parse()
-        .expect("Expected a number");
-    let increment = 2 * thread_num;
+/// Search for prime sum sequences.
+#[derive(Parser, Debug)]
+#[command(name= "Prime sum sequences", version, author, long_about=None)]
+struct Cli {
+    /// Sequence length to start at
+    #[arg(short, long)]
+    start: Option<usize>,
+    /// Maximum sequence length to search for
+    #[arg(short, long)]
+    max: usize,
+    /// Number of threads
+    #[arg(short, long, default_value_t = 1)]
+    threads: usize,
+    /// Stack size in bytes
+    #[arg(long, default_value_t = 1048576)]
+    stack_size: usize,
+    /// Greedily start at n/divisor if non-zero
+    #[arg(short, long, default_value_t = 0)]
+    divisor: usize,
+    /// Use greedy fast search
+    #[arg(short, long)]
+    fast: bool,
+}
 
-    let fast = matches.is_present("Fast");
+fn main() {
+    let cli = Cli::parse();
+    let start = match cli.start {
+        Some(arg) => {
+            if arg < cli.threads * 2 {
+                eprintln!("The number of threads must be less than the start/2");
+                return;
+            }
+            if arg % 2 != 0 {
+                eprintln!("The start should be even");
+                return;
+            }
+            arg
+        }
+        None => max(cli.threads * 2, 12),
+    };
+    let increment = 2 * cli.threads;
 
     let now = Instant::now();
 
     // Calculate primes ahead of time.
     println!("Calculating primes");
-    let primes = gen_primes_upto_n(2 * maximum - 1);
+    let primes = gen_primes_upto_n(2 * cli.max - 1);
     let primes = std::sync::Arc::new(primes);
     println!("Finished calculating primes in {:?}", now.elapsed());
 
-    // Spawn threads with explicit stack size
-    // Needed because of the heavy recursion
     std::thread::scope(|s| {
-        for i in 0..thread_num {
+        for i in 0..cli.threads {
             let builder = thread::Builder::new();
             builder
-                .stack_size(stack_size)
+                // Spawn threads with explicit stack size
+                // Needed because of the heavy recursion
+                .stack_size(cli.stack_size)
                 .spawn_scoped(s, {
                     let primes = primes.clone();
                     move || {
-                        if fast {
-                            test_for_cycles_naive(maximum, start, increment, i * 2, &primes);
+                        if cli.fast {
+                            test_for_cycles_naive(cli.max, start, increment, i * 2, &primes);
                         } else {
-                            test_for_cycles(maximum, start, increment, i * 2, divisor, &primes);
+                            test_for_cycles(cli.max, start, increment, i * 2, cli.divisor, &primes);
                         }
                     }
                 })
                 .unwrap();
         }
     });
-    // Wait for threads to join
     println!("All threads done, total time: {:?}", now.elapsed());
 }
