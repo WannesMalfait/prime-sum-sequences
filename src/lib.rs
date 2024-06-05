@@ -1,4 +1,6 @@
+use rayon::prelude::*;
 use std::borrow::Cow;
+use std::cmp::min;
 use std::io;
 use std::io::Write;
 use std::vec;
@@ -343,25 +345,59 @@ fn gcd(mut a: usize, mut b: usize) -> usize {
     a
 }
 
-/// Generates the primes upto and including `n`. Doesn't
-/// check for overflow on `n`
+/// Checks if `n` is a prime.
+///
+/// `primes` should contain all the primes up to sqrt(n).
+fn is_prime(n: usize, primes: &[usize]) -> bool {
+    for &prime in primes.iter() {
+        if prime > n / prime {
+            // In this case prime > sqrt(n), so it can not be a factor.
+            return true;
+        }
+        if n % prime == 0 {
+            // Divisible, so not a prime.
+            return false;
+        }
+    }
+    true
+}
+
+/// Generates the primes upto and including `n`.
+/// Doesn't check for overflow on `n`.
 pub fn gen_primes_upto_n(n: usize) -> Vec<usize> {
     let mut primes = vec![2];
+    // Prime number theorem says there are around n / ln(n) primes less than n.
+    // Based on this we reserve space in the vec.
     primes.reserve((n as f64 / (n as f64).log(std::f64::consts::E)).floor() as usize);
-    'outer: for i in (3..(n + 1)).step_by(2) {
-        // Skip checking for even numbers.
-        for &prime in primes.iter().skip(1) {
-            if prime > i / prime {
-                // In this case prime > sqrt(i), so it can not be a factor.
-                break;
-            }
-            if i % prime == 0 {
-                // Divisible, so not a prime.
-                continue 'outer;
-            }
+
+    // For the first `cutoff` numbers we just use 1 thread.
+    // To properly parallelize we need to already have a decent
+    // amount of primes generated.
+    let cutoff = 5_000;
+    let mut cap = min(cutoff, n);
+
+    // Already skip all the even numbers.
+    for i in (3..=cap).step_by(2) {
+        if is_prime(i, &primes) {
+            primes.push(i);
         }
-        primes.push(i);
     }
+
+    // Now comes the parallel part.
+    while cap < n {
+        let start = cap + 1;
+
+        // To check for primes less than N^2,
+        // we only need the primes less than N.
+        cap = min(n, cap.saturating_mul(cap));
+
+        let new_primes = (start..=cap)
+            .into_par_iter()
+            .filter(|&i| is_prime(i, &primes))
+            .collect::<Vec<usize>>();
+        primes.extend_from_slice(&new_primes);
+    }
+
     primes
 }
 

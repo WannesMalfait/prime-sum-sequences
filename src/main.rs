@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use std::cmp::max;
 use std::thread;
 use std::time::Instant;
@@ -59,25 +60,6 @@ fn test_for_cycles(
     }
 }
 
-fn test_for_cycles_naive(
-    maximum: usize,
-    start: usize,
-    increment: usize,
-    offset: usize,
-    primes: &[usize],
-) {
-    let mut i = start + offset;
-    while i <= maximum {
-        if find_prime_quadruplet(i / 2, Some(primes)).is_none() {
-            panic!("Did not find Hamiltonian cycle for size {}.", i);
-        };
-        // If the even index has a cycle then we can always remove one vertex
-        // to create a valid path of length index - 1. Therefore we only check
-        // the even indices.
-        i += increment;
-    }
-}
-
 /// Search for prime sum sequences.
 #[derive(Parser, Debug)]
 #[command(name= "Prime sum sequences", version, author, long_about=None)]
@@ -89,8 +71,8 @@ struct Cli {
     #[arg(short, long)]
     max: usize,
     /// Number of threads
-    #[arg(short, long, default_value_t = 1)]
-    threads: usize,
+    #[arg(short, long = "threads", default_value_t = 1)]
+    num_threads: usize,
     /// Stack size in bytes
     #[arg(long, default_value_t = 1048576)]
     stack_size: usize,
@@ -106,7 +88,7 @@ fn main() {
     let cli = Cli::parse();
     let start = match cli.start {
         Some(arg) => {
-            if arg < cli.threads * 2 {
+            if arg < cli.num_threads * 2 {
                 eprintln!("The number of threads must be less than the start/2");
                 return;
             }
@@ -116,9 +98,14 @@ fn main() {
             }
             arg
         }
-        None => max(cli.threads * 2, 12),
+        None => max(cli.num_threads * 2, 12),
     };
-    let increment = 2 * cli.threads;
+    let increment = 2 * cli.num_threads;
+
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(cli.num_threads)
+        .build_global()
+        .unwrap();
 
     let now = Instant::now();
 
@@ -127,26 +114,31 @@ fn main() {
     let primes = gen_primes_upto_n(2 * cli.max - 1);
     let primes = std::sync::Arc::new(primes);
     println!("Finished calculating primes in {:?}", now.elapsed());
-
-    std::thread::scope(|s| {
-        for i in 0..cli.threads {
-            let builder = thread::Builder::new();
-            builder
-                // Spawn threads with explicit stack size
-                // Needed because of the heavy recursion
-                .stack_size(cli.stack_size)
-                .spawn_scoped(s, {
-                    let primes = primes.clone();
-                    move || {
-                        if cli.fast {
-                            test_for_cycles_naive(cli.max, start, increment, i * 2, &primes);
-                        } else {
+    if cli.fast {
+        // We divide by 2, because `find_prime_quadruplet`
+        // takes in half the size, to ensure that it is even.
+        ((start / 2)..(cli.max / 2)).into_par_iter().for_each(|i| {
+            if find_prime_quadruplet(i, Some(&primes)).is_none() {
+                panic!("Did not find Hamiltonian cycle for size {}.", i * 2);
+            }
+        });
+    } else {
+        std::thread::scope(|s| {
+            for i in 0..cli.num_threads {
+                let builder = thread::Builder::new();
+                builder
+                    // Spawn threads with explicit stack size
+                    // Needed because of the heavy recursion
+                    .stack_size(cli.stack_size)
+                    .spawn_scoped(s, {
+                        let primes = primes.clone();
+                        move || {
                             test_for_cycles(cli.max, start, increment, i * 2, cli.divisor, &primes);
                         }
-                    }
-                })
-                .unwrap();
-        }
-    });
+                    })
+                    .unwrap();
+            }
+        });
+    };
     println!("All threads done, total time: {:?}", now.elapsed());
 }

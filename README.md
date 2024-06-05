@@ -45,7 +45,7 @@ The `--fast` option checks for this criterium, instead of trying to brute-force 
 cargo run --release -- --max 10000 --fast
 ```
 
-On my laptop, checking the sequences up to length `100'000'000` on 8 threads took around 80 secs with this method. Of those 80 seconds, 60 were spent calculating prime numbers (not yet multithreaded).
+On my laptop, checking the sequences up to length `100'000'000` on 8 threads took around 30 secs with this method. Of those 30 seconds, 12 were spent calculating prime numbers. Checking up to `1'000'000'000` took around 520 seconds, 285 of which were spent computing prime numbers.
 
 ### Constructing the sequence
 
